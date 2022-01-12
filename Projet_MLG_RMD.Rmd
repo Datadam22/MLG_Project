@@ -1,0 +1,770 @@
+---
+title: "Projet MLG"
+author: "Damien Fessler"
+date: "11-01-2022"
+output:
+  pdf_document: default
+  html_document: default
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(ggplot2)
+```
+
+
+## Projet MLG - Executive Master “Statistiques et big data” - 2021-2022
+
+
+### Introduction: Présentation du projet, problématique et plan de l'étude
+
+L'objet de ce travail est de prédire s'il pleuvra (ou pas) à Bâle, lors de certaines journées, sur la base des conditions météorologiques de la journée précédente, conditions qui sont décrites par une série de variables (température, humidité, pression athmosphérique, nébulosité, vitesse du vent,...). Nous disposons d'un jeu de données d'entrainement donnant les valeurs, pour 1180 journées d'obervations, de 46 variables explicatives (43 si l'on supprime d'emblée celles qui ne sont pas pertinentes) et de la variable à prédire "Pluie demain" (variable de type booléenne pouvant prendre les valeurs "TRUE" ou "FALSE").
+
+Une première section sera consacrée au chargement et à la préparation du jeu de données. Dans un second temps, nous proposerons quelques représentations graphiques des données ainsi qu'une étude sommaire des corrélations entre variables. Dans la troisième section, nous nous intéresserons brièvement au climat de la ville de Bâle, espérant que cela puisse nous guider dans le choix des variables pertinentes pour notre modèle. Une quatrième section sera consacrée à la construction du modèle (via une régression logistique) et à la sélection des prédicteurs, en partant du modèle le plus complet, et en l'affinant successivement. Nous présenterons dans la cinquième section un seconde tentative de sélection de variable, suivant une méthode automatique combinant différents critères d'ajustement. Nous comparerons les modèles issus des deux approches. Enfin nous établirons les prévisions sur le jeu test, sur la base du modèle qui aura été finalement retenu. 
+
+1. Chargement, préparation du jeu de données
+2. Description des données
+3. Le climat de la ville de Bâle
+4. Choix du modèle: méthode intuitive
+5. Choix du modèle: méthode automatique
+6. Prévisions
+
+<br/>
+
+### 1. Chargement et préparation du jeu de données
+   
+   
+<br/>
+
+#### Chargement des données  
+
+```{r}
+meteo.train <- read.csv("~/Documents/EXEC MASTER/Module 2/Projet MLG/meteo.train.csv")
+```
+
+<br/>   
+
+#### Chargement des données test
+
+```{r}
+meteo.test <- read.csv("~/Documents/EXEC MASTER/Module 2/Projet MLG/meteo.test.csv")
+```
+
+<br/>
+
+#### Suppression des colonnes inutiles et renommage du data.frame    
+  
+La première colonne indique le rang de l'observation, la colonne 4 le numéro de jour dans le mois, les colonnes 5 et 6 ne contiennent que des "0": je les supprime. 
+
+```{r}
+meteo.train.short <- meteo.train[,-c(1,4:6)]
+d <- meteo.train.short[,]
+meteo.test.short <- meteo.test[,-c(1,4:6)]
+dtest <- meteo.test.short[,]
+
+d2 <- meteo.train[,-(4:6)] ### Je crée une version d2 du jeu de données, dans laquelle je conserve le rang de l'observation, afin de pouvoir représenter l'évolution temporelle des prédicteurs (cf. infra)
+
+```
+  
+<br/>
+
+#### Renommage des colonnes  
+  
+Afin de faciliter la rédaction et l'affichage, on renomme les colonnes en utilisant des intitulés plus courts.
+
+```{r}
+d.names = c("Year", "Month", "Temperature.daily.mean..2.m.above.gnd.", "Relative.Humidity.daily.mean..2.m.above.gnd.", "Mean.Sea.Level.Pressure.daily.mean..MSL.", "Total.Precipitation.daily.sum..sfc.", "Snowfall.amount.raw.daily.sum..sfc.", "Total.Cloud.Cover.daily.mean..sfc.", "High.Cloud.Cover.daily.mean..high.cld.lay.", "Medium.Cloud.Cover.daily.mean..mid.cld.lay.", "Low.Cloud.Cover.daily.mean..low.cld.lay.", "Sunshine.Duration.daily.sum..sfc.", "Shortwave.Radiation.daily.sum..sfc.", "Wind.Speed.daily.mean..10.m.above.gnd.", "Wind.Direction.daily.mean..10.m.above.gnd.", "Wind.Speed.daily.mean..80.m.above.gnd.", "Wind.Direction.daily.mean..80.m.above.gnd.", "Wind.Speed.daily.mean..900.mb.", "Wind.Direction.daily.mean..900.mb.", "Wind.Gust.daily.mean..sfc.", "Temperature.daily.max..2.m.above.gnd.", "Temperature.daily.min..2.m.above.gnd.", "Relative.Humidity.daily.max..2.m.above.gnd.", "Relative.Humidity.daily.min..2.m.above.gnd.", "Mean.Sea.Level.Pressure.daily.max..MSL.", "Mean.Sea.Level.Pressure.daily.min..MSL.", "Total.Cloud.Cover.daily.max..sfc.", "Total.Cloud.Cover.daily.min..sfc.", "High.Cloud.Cover.daily.max..high.cld.lay.", "High.Cloud.Cover.daily.min..high.cld.lay.", "Medium.Cloud.Cover.daily.max..mid.cld.lay.", "Medium.Cloud.Cover.daily.min..mid.cld.lay.", "Low.Cloud.Cover.daily.max..low.cld.lay.", "Low.Cloud.Cover.daily.min..low.cld.lay.", "Wind.Speed.daily.max..10.m.above.gnd.", "Wind.Speed.daily.min..10.m.above.gnd.", "Wind.Speed.daily.max..80.m.above.gnd.", "Wind.Speed.daily.min..80.m.above.gnd.", "Wind.Speed.daily.max..900.mb.", "Wind.Speed.daily.min..900.mb.", "Wind.Gust.daily.max..sfc.", "Wind.Gust.daily.min..sfc.", "pluie.demain")
+d.short=c("Year", "Month", "Temp.mean", "Hum.mean", "Press.mean", "Precip", "Snow", "Tot.cloud.mean", "High.cloud.mean", "Med.cloud.mean", "Low.cloud.mean", "Sunshine.daily.sum", "Rad.daily.sum", "Wspeed10.mean", "Wdir10.mean", "Wspeed80.mean", "Wdir80.mean", "Wspeed900.mean", "Wdir900.mean", "Gust.mean", "Temp.max", "Temp.min", "Hum.max", "Hum.min", "Press.max", "Press.min", "Tot.cloud.max", "Tot.cloud.min", "High.cloud.max", "High.cloud.min", "Med.cloud.max", "Med.cloud.min", "Low.cloud.max", "Low.cloud.min", "Wspeed10.max", "Wspeed10.min", "Wspeed80.max", "Wspeed80.min", "Wspeed900.max", "Wspeed900.min", "Gust.max", "Gust.min", "pluie.demain")
+names(d)=d.short
+names(d)
+```
+
+```{r}
+dtest.names = c("Year", "Month", "Temperature.daily.mean..2.m.above.gnd.", "Relative.Humidity.daily.mean..2.m.above.gnd.", "Mean.Sea.Level.Pressure.daily.mean..MSL.", "Total.Precipitation.daily.sum..sfc.", "Snowfall.amount.raw.daily.sum..sfc.", "Total.Cloud.Cover.daily.mean..sfc.", "High.Cloud.Cover.daily.mean..high.cld.lay.", "Medium.Cloud.Cover.daily.mean..mid.cld.lay.", "Low.Cloud.Cover.daily.mean..low.cld.lay.", "Sunshine.Duration.daily.sum..sfc.", "Shortwave.Radiation.daily.sum..sfc.", "Wind.Speed.daily.mean..10.m.above.gnd.", "Wind.Direction.daily.mean..10.m.above.gnd.", "Wind.Speed.daily.mean..80.m.above.gnd.", "Wind.Direction.daily.mean..80.m.above.gnd.", "Wind.Speed.daily.mean..900.mb.", "Wind.Direction.daily.mean..900.mb.", "Wind.Gust.daily.mean..sfc.", "Temperature.daily.max..2.m.above.gnd.", "Temperature.daily.min..2.m.above.gnd.", "Relative.Humidity.daily.max..2.m.above.gnd.", "Relative.Humidity.daily.min..2.m.above.gnd.", "Mean.Sea.Level.Pressure.daily.max..MSL.", "Mean.Sea.Level.Pressure.daily.min..MSL.", "Total.Cloud.Cover.daily.max..sfc.", "Total.Cloud.Cover.daily.min..sfc.", "High.Cloud.Cover.daily.max..high.cld.lay.", "High.Cloud.Cover.daily.min..high.cld.lay.", "Medium.Cloud.Cover.daily.max..mid.cld.lay.", "Medium.Cloud.Cover.daily.min..mid.cld.lay.", "Low.Cloud.Cover.daily.max..low.cld.lay.", "Low.Cloud.Cover.daily.min..low.cld.lay.", "Wind.Speed.daily.max..10.m.above.gnd.", "Wind.Speed.daily.min..10.m.above.gnd.", "Wind.Speed.daily.max..80.m.above.gnd.", "Wind.Speed.daily.min..80.m.above.gnd.", "Wind.Speed.daily.max..900.mb.", "Wind.Speed.daily.min..900.mb.", "Wind.Gust.daily.max..sfc.", "Wind.Gust.daily.min..sfc.")
+dtest.short=c("Year", "Month", "Temp.mean", "Hum.mean", "Press.mean", "Precip", "Snow", "Tot.cloud.mean", "High.cloud.mean", "Med.cloud.mean", "Low.cloud.mean", "Sunshine.daily.sum", "Rad.daily.sum", "Wspeed10.mean", "Wdir10.mean", "Wspeed80.mean", "Wdir80.mean", "Wspeed900.mean", "Wdir900.mean", "Gust.mean", "Temp.max", "Temp.min", "Hum.max", "Hum.min", "Press.max", "Press.min", "Tot.cloud.max", "Tot.cloud.min", "High.cloud.max", "High.cloud.min", "Med.cloud.max", "Med.cloud.min", "Low.cloud.max", "Low.cloud.min", "Wspeed10.max", "Wspeed10.min", "Wspeed80.max", "Wspeed80.min", "Wspeed900.max", "Wspeed900.min", "Gust.max", "Gust.min")
+names(dtest)=dtest.short
+names(dtest)
+d2.names = c("X", "Year", "Month", "Temperature.daily.mean..2.m.above.gnd.", "Relative.Humidity.daily.mean..2.m.above.gnd.", "Mean.Sea.Level.Pressure.daily.mean..MSL.", "Total.Precipitation.daily.sum..sfc.", "Snowfall.amount.raw.daily.sum..sfc.", "Total.Cloud.Cover.daily.mean..sfc.", "High.Cloud.Cover.daily.mean..high.cld.lay.", "Medium.Cloud.Cover.daily.mean..mid.cld.lay.", "Low.Cloud.Cover.daily.mean..low.cld.lay.", "Sunshine.Duration.daily.sum..sfc.", "Shortwave.Radiation.daily.sum..sfc.", "Wind.Speed.daily.mean..10.m.above.gnd.", "Wind.Direction.daily.mean..10.m.above.gnd.", "Wind.Speed.daily.mean..80.m.above.gnd.", "Wind.Direction.daily.mean..80.m.above.gnd.", "Wind.Speed.daily.mean..900.mb.", "Wind.Direction.daily.mean..900.mb.", "Wind.Gust.daily.mean..sfc.", "Temperature.daily.max..2.m.above.gnd.", "Temperature.daily.min..2.m.above.gnd.", "Relative.Humidity.daily.max..2.m.above.gnd.", "Relative.Humidity.daily.min..2.m.above.gnd.", "Mean.Sea.Level.Pressure.daily.max..MSL.", "Mean.Sea.Level.Pressure.daily.min..MSL.", "Total.Cloud.Cover.daily.max..sfc.", "Total.Cloud.Cover.daily.min..sfc.", "High.Cloud.Cover.daily.max..high.cld.lay.", "High.Cloud.Cover.daily.min..high.cld.lay.", "Medium.Cloud.Cover.daily.max..mid.cld.lay.", "Medium.Cloud.Cover.daily.min..mid.cld.lay.", "Low.Cloud.Cover.daily.max..low.cld.lay.", "Low.Cloud.Cover.daily.min..low.cld.lay.", "Wind.Speed.daily.max..10.m.above.gnd.", "Wind.Speed.daily.min..10.m.above.gnd.", "Wind.Speed.daily.max..80.m.above.gnd.", "Wind.Speed.daily.min..80.m.above.gnd.", "Wind.Speed.daily.max..900.mb.", "Wind.Speed.daily.min..900.mb.", "Wind.Gust.daily.max..sfc.", "Wind.Gust.daily.min..sfc.", "pluie.demain")
+d2.short=c("X","Year", "Month", "Temp.mean", "Hum.mean", "Press.mean", "Precip", "Snow", "Tot.cloud.mean", "High.cloud.mean", "Med.cloud.mean", "Low.cloud.mean", "Sunshine.daily.sum", "Rad.daily.sum", "Wspeed10.mean", "Wdir10.mean", "Wspeed80.mean", "Wdir80.mean", "Wspeed900.mean", "Wdir900.mean", "Gust.mean", "Temp.max", "Temp.min", "Hum.max", "Hum.min", "Press.max", "Press.min", "Tot.cloud.max", "Tot.cloud.min", "High.cloud.max", "High.cloud.min", "Med.cloud.max", "Med.cloud.min", "Low.cloud.max", "Low.cloud.min", "Wspeed10.max", "Wspeed10.min", "Wspeed80.max", "Wspeed80.min", "Wspeed900.max", "Wspeed900.min", "Gust.max", "Gust.min", "pluie.demain")
+names(d2)=d2.short
+```
+
+<br/>
+   
+#### Correspondance des noms de colonnes
+
+```{r}
+tableau <- data.frame(x = d.names, y = d.short)
+tableau
+```
+
+<br/>
+  
+### 2. Description des données
+    
+<br/>  
+     
+#### Obervations des données et nombre d'obervations par mois  
+
+Le tableau comprend 1180 obervations journalières, allant du 2 juin 2010 au 18 juin 2018, correspondant à des relevés à deux jours d'intervalle. Les relevés s'étalent de façon régulière sur la totalité de la période d'étude. Quelques irrégularités apparaissent qui s'expliquent par le fait que des données ont été supprimées pour constituer le jeu test. 
+
+```{r}
+data.frame(table(d$Year))
+```
+
+```{r}
+data.frame(table(d$Month))
+```
+  
+Les observations du jeu de données "test" s'étalent également de façon régulière sur toutes les années et tous les mois de la période d'étude. 
+
+```{r}
+data.frame(table(dtest$Year))
+```
+
+```{r}
+data.frame(table(dtest$Month))
+```
+
+<br/>
+  
+  
+#### Première obervation des données
+
+```{r}
+summary(d)
+```
+  
+<br/>
+
+#### Histogrammes
+
+```{r}
+par(mfrow=c(3,3))
+hist(d$Temp.mean,main='Temp.mean', col=c("orange"),xlab=NULL,ylab=NULL)
+hist(d$Hum.mean,main='Hum.mean', col=c("orange"),xlab=NULL,ylab=NULL)
+hist(d$Press.mean,main='Press.mean', col=c("orange"),xlab=NULL,ylab=NULL)
+hist(d$Precip,main='Precip', col=c("orange"),xlab=NULL,ylab=NULL)
+hist(d$Snow,main='Snow', col=c("orange"),xlab=NULL,ylab=NULL)
+hist(d$Tot.cloud.mean,main='Tot.cloud.mean', col=c("orange"),xlab=NULL,ylab=NULL)
+hist(d$High.cloud.mean,main='High.cloud.mean', col=c("orange"),xlab=NULL,ylab=NULL)
+hist(d$Med.cloud.mean,main='Med.cloud.mean', col=c("orange"),xlab=NULL,ylab=NULL)
+hist(d$Low.cloud.mean,main='Low.cloud.mean', col=c("orange"),xlab=NULL,ylab=NULL)
+hist(d$Sunshine.daily.sum,main='Sunshine.daily.sum', col=c("orange"),xlab=NULL,ylab=NULL)
+hist(d$Rad.daily.sum,main='Rad.daily.sum', col=c("orange"),xlab=NULL,ylab=NULL)
+hist(d$Wspeed10.mean,main='d$Wspeed10.mean', col=c("orange"),xlab=NULL,ylab=NULL)
+hist(d$Wdir10.mean,main='Wdir10.mean', col=c("orange"),xlab=NULL,ylab=NULL)
+hist(d$Wspeed80.mean,main='d$Wspeed80.mean', col=c("orange"),xlab=NULL,ylab=NULL)
+hist(d$Wdir80.mean,main='Wdir80.mean', col=c("orange"),xlab=NULL,ylab=NULL)
+hist(d$Wspeed900.mean,main='d$Wspeed900.mean', col=c("orange"),xlab=NULL,ylab=NULL)
+hist(d$Wspeed900.mean,main='d$Wspeed900.mean', col=c("orange"),xlab=NULL,ylab=NULL)
+hist(d$Gust.mean,main='Gust.mean', col=c("orange"),xlab=NULL,ylab=NULL)
+hist(d$Temp.max,main='Temp.max', col=c("orange"),xlab=NULL,ylab=NULL)
+hist(d$Temp.min,main='Temp.min', col=c("orange"),xlab=NULL,ylab=NULL)
+hist(d$Hum.max,main='Hum.max', col=c("orange"),xlab=NULL,ylab=NULL)
+hist(d$Hum.min,main='Hum.min', col=c("orange"),xlab=NULL,ylab=NULL)
+hist(d$Press.max,main='Press.max', col=c("orange"),xlab=NULL,ylab=NULL)
+hist(d$Press.min,main='Press.min', col=c("orange"),xlab=NULL,ylab=NULL)
+hist(d$Tot.cloud.max,main='Tot.cloud.max', col=c("orange"),xlab=NULL,ylab=NULL)
+hist(d$Tot.cloud.min,main='Tot.cloud.min', col=c("orange"),xlab=NULL,ylab=NULL)
+hist(d$High.cloud.max,main='High.cloud.max', col=c("orange"),xlab=NULL,ylab=NULL)
+hist(d$High.cloud.min,main='High.cloud.min', col=c("orange"),xlab=NULL,ylab=NULL)
+hist(d$Med.cloud.max,main='Med.cloud.max', col=c("orange"),xlab=NULL,ylab=NULL)
+hist(d$Med.cloud.min,main='Med.cloud.min', col=c("orange"),xlab=NULL,ylab=NULL)
+hist(d$Low.cloud.max,main='Low.cloud.max', col=c("orange"),xlab=NULL,ylab=NULL)
+hist(d$Low.cloud.min,main='Low.cloud.min', col=c("orange"),xlab=NULL,ylab=NULL)
+hist(d$Wspeed10.max,main='Wspeed10.max', col=c("orange"),xlab=NULL,ylab=NULL)
+hist(d$Wspeed10.min,main='Wspeed10.min', col=c("orange"),xlab=NULL,ylab=NULL)
+hist(d$Wspeed80.max,main='Wspeed80.max', col=c("orange"),xlab=NULL,ylab=NULL)
+hist(d$Wspeed80.min,main='Wspeed80.min', col=c("orange"),xlab=NULL,ylab=NULL)
+hist(d$Wspeed900.max,main='Wspeed900.max', col=c("orange"),xlab=NULL,ylab=NULL)
+hist(d$Wspeed900.min,main='Wspeed900.min', col=c("orange"),xlab=NULL,ylab=NULL)
+hist(d$Gust.max,main='Gust.max', col=c("orange"),xlab=NULL,ylab=NULL)
+hist(d$Gust.min,main='Gust.min', col=c("orange"),xlab=NULL,ylab=NULL)
+
+
+
+
+```
+
+Concernant les histogrammes, on peut faire une série de remarques:   
+
+* certaines variables ont une distribution très symétrique centrée sur un mode: température, pression atmosphérique, Humidité   
+
+* certaines variables ont une distribution plus asymétrique: vent  
+
+* certaines distributions se caractérisent par un mode très marqué: neige, précipitations:  
+
+  
+<br/>
+
+#### Évolution des variables dans le temps
+
+```{r}
+par(mfrow=c(3,3))
+plot(d2$Temp.mean~d2$X,type="l", col="purple", xlab="", ylab="", main="Temp.mean", lwd=0.4, )
+plot(d2$Temp.mean~d2$X,type="l", col="purple", xlab="", ylab="", main="Temp.mean", lwd=0.4, )
+plot(d2$Hum.mean~d2$X,type="l", col="purple", xlab="", ylab="", main="Hum.mean", lwd=0.4)
+plot(d2$Press.mean~d2$X,type="l", col="purple", xlab="", ylab="", main="Press.mean", lwd=0.4)
+plot(d2$Precip~d2$X,type="l", col="purple", xlab="", ylab="", main="Precip", lwd=0.4)
+plot(d2$Snow~d2$X,type="l", col="purple", xlab="", ylab="", main="Snow", lwd=0.4)
+plot(d2$Tot.cloud.mean~d2$X,type="l", col="purple", xlab="", ylab="", main="Tot.cloud.mean", lwd=0.4)
+plot(d2$High.cloud.mean~d2$X,type="l", col="purple", xlab="", ylab="", main="High.cloud.mean", lwd=0.4)
+plot(d2$Med.cloud.mean~d2$X,type="l", col="purple", xlab="", ylab="", main="Med.cloud.mean", lwd=0.4)
+plot(d2$Low.cloud.mean~d2$X,type="l", col="purple", xlab="", ylab="", main="Low.cloud.mean", lwd=0.4)
+plot(d2$Sunshine.daily.sum~d2$X,type="l", col="purple", xlab="", ylab="", main="Sunshine.daily.sum",lwd=0.4)
+plot(d2$Rad.daily.sum~d2$X,type="l", col="purple", xlab="", ylab="", main="Rad.daily.sum", lwd=0.4)
+plot(d2$Wspeed10.mean~d2$X,type="l", col="purple", xlab="", ylab="", main="Wspeed10.mean", lwd=0.4)
+plot(d2$Wdir10.mean~d2$X,type="l", col="purple", xlab="", ylab="", main="Wdir10.mean", lwd=0.4)
+plot(d2$Wspeed80.mean~d2$X,type="l", col="purple", xlab="", ylab="", main="Wspeed80.mean", lwd=0.4)
+plot(d2$Wdir80.mean~d2$X,type="l", col="purple", xlab="", ylab="", main="Wdir80.mean", lwd=0.4)
+plot(d2$Wspeed900.mean~d2$X,type="l", col="purple", xlab="", ylab="", main="Wspeed900.mean", lwd=0.4)
+plot(d2$Wdir900.mean~d2$X,type="l", col="purple", xlab="", ylab="", main="Wdir900.mean", lwd=0.4)
+plot(d2$Gust.mean~d2$X,type="l", col="purple", xlab="", ylab="", main="Gust.mean", lwd=0.4)
+plot(d2$Temp.max~d2$X,type="l", col="purple", xlab="", ylab="", main="Temp.max", lwd=0.4)
+plot(d2$Temp.min~d2$X,type="l", col="purple", xlab="", ylab="", main="Temp.min", lwd=0.4)
+plot(d2$Hum.max~d2$X,type="l", col="purple", xlab="", ylab="", main="Hum.max", lwd=0.4)
+plot(d2$Hum.min~d2$X,type="l", col="purple", xlab="", ylab="", main="Hum.min", lwd=0.4)
+plot(d2$Press.max~d2$X,type="l", col="purple", xlab="", ylab="", main="Press.max", lwd=0.4)
+plot(d2$Press.min~d2$X,type="l", col="purple", xlab="", ylab="", main="Press.min", lwd=0.4)
+plot(d2$Tot.cloud.max~d2$X,type="l", col="purple", xlab="", ylab="", main="Tot.cloud.max", lwd=0.4)
+plot(d2$Tot.cloud.min~d2$X,type="l", col="purple", xlab="", ylab="", main="Tot.cloud.min", lwd=0.4)
+plot(d2$High.cloud.max~d2$X,type="l", col="purple", xlab="", ylab="", main="High.cloud.max", lwd=0.4)
+plot(d2$High.cloud.min~d2$X,type="l", col="purple", xlab="", ylab="", main="High.cloud.min", lwd=0.4)
+plot(d2$Med.cloud.max~d2$X,type="l", col="purple", xlab="", ylab="", main="Med.cloud.max", lwd=0.4)
+plot(d2$Med.cloud.min~d2$X,type="l", col="purple", xlab="", ylab="", main="Med.cloud.min", lwd=0.4)
+plot(d2$Low.cloud.max~d2$X,type="l", col="purple", xlab="", ylab="", main="Low.cloud.max", lwd=0.4)
+plot(d2$Low.cloud.min~d2$X,type="l", col="purple", xlab="", ylab="", main="Low.cloud.min", lwd=0.4)
+plot(d2$Wspeed10.max~d2$X,type="l", col="purple", xlab="", ylab="", main="Wspeed10.max", lwd=0.4)
+plot(d2$Wspeed10.min~d2$X,type="l", col="purple", xlab="", ylab="", main="Wspeed10.min", lwd=0.4)
+plot(d2$Wspeed80.max~d2$X,type="l", col="purple", xlab="", ylab="", main="Wspeed80.max", lwd=0.4)
+plot(d2$Wspeed80.min~d2$X,type="l", col="purple", xlab="", ylab="", main="Wspeed80.min", lwd=0.4)
+plot(d2$Wspeed900.max~d2$X,type="l", col="purple", xlab="", ylab="", main="Wspeed900.max", lwd=0.4)
+plot(d2$Wspeed900.min~d2$X,type="l", col="purple", xlab="", ylab="", main="Wspeed900.min", lwd=0.4)
+plot(d2$Gust.max~d2$X,type="l", col="purple", xlab="", ylab="", main="Gust.max", lwd=0.4)
+plot(d2$Gust.min~d2$X,type="l", col="purple", xlab="", ylab="", main="Gust.min", lwd=0.4)
+
+```
+  
+  **Remarques:**    
+  
+* Certaines variables ont une composante saisonnière très marquée: température, humidité, radiations solaires  
+
+* D'autres ont une composante saisonnière moins marquée: pression atmosphérique, vent à certaines altitudes  
+
+* D'autres n'ont pas du tout de composante saisonnière: couverture nuageuse  
+  
+  
+<br/>
+    
+    
+#### Etude des corrélations
+  
+On commence par calculer les coefficients de corrélation entre la variable à expliquer (en la recodant) et les variables explicatives. 
+
+```{r}
+d$pluie.demain.01 <- as.integer(d$pluie.demain) ### on recode la variable pluie.demain en valeurs "0" et "1" afin de pouvoir calculer des coefficients de corrélation entre cette variable et les prédicteurs.
+corvec <- c(cor(d$pluie.demain.01, d$Year), cor(d$pluie.demain.01, d$Month), cor(d$pluie.demain.01, d$Temp.mean), cor(d$pluie.demain.01, d$Hum.mean), cor(d$pluie.demain.01, d$Press.mean), cor(d$pluie.demain.01, d$Precip), cor(d$pluie.demain.01, d$Snow), cor(d$pluie.demain.01, d$Tot.cloud.mean), cor(d$pluie.demain.01, d$High.cloud.mean), cor(d$pluie.demain.01, d$Med.cloud.mean), cor(d$pluie.demain.01, d$Low.cloud.mean), cor(d$pluie.demain.01, d$Sunshine.daily.sum), cor(d$pluie.demain.01, d$Rad.daily.sum), cor(d$pluie.demain.01, d$Wspeed10.mean), cor(d$pluie.demain.01, d$Wdir10.mean), cor(d$pluie.demain.01, d$Wspeed80.mean), cor(d$pluie.demain.01, d$Wdir80.mean), cor(d$pluie.demain.01, d$Wspeed900.mean), cor(d$pluie.demain.01, d$Wdir900.mean), cor(d$pluie.demain.01, d$Gust.mean), cor(d$pluie.demain.01, d$Temp.max), cor(d$pluie.demain.01, d$Temp.min), cor(d$pluie.demain.01, d$Hum.max), cor(d$pluie.demain.01, d$Hum.min), cor(d$pluie.demain.01, d$Press.max), cor(d$pluie.demain.01, d$Press.min), cor(d$pluie.demain.01, d$Tot.cloud.max), cor(d$pluie.demain.01, d$Tot.cloud.min), cor(d$pluie.demain.01, d$High.cloud.max), cor(d$pluie.demain.01, d$High.cloud.min), cor(d$pluie.demain.01, d$Med.cloud.max), cor(d$pluie.demain.01, d$Med.cloud.min), cor(d$pluie.demain.01, d$Low.cloud.max), cor(d$pluie.demain.01, d$Low.cloud.min), cor(d$pluie.demain.01, d$Wspeed10.max), cor(d$pluie.demain.01, d$Wspeed10.min), cor(d$pluie.demain.01, d$Wspeed80.max), cor(d$pluie.demain.01, d$Wspeed80.min), cor(d$pluie.demain.01, d$Wspeed900.max), cor(d$pluie.demain.01, d$Wspeed900.min), cor(d$pluie.demain.01, d$Gust.max), cor(d$pluie.demain.01, d$Gust.min))
+tab.cor <- data.frame (d.short[-43],corvec)
+tab.cor
+```
+Signalons que nous avons calculé une série de coefficients de corrélation entre une variable binaire et une variable quantitative continue (corrélation de type "bisériel"). Concernant l'interprétation des résultats du coefficient de corrélation bisériel, celle-ci est similaire au cas d'une corrélation classique. Une valeur positive indique que lorsque la variable logique prend la valeur "1", alors la variable quantitative tend à avoir une plus grande valeur, en comparaison de la situation où la variable logique prend la valeur "0". 
+
+Sans entrer dans les détails des résultats, on peut faire quelques remarques:    
+
+* Aucun coefficient de corrélation n'affiche une valeur absolue élevée, tous sont inférieurs à 0,4 en valeur absolue. Toutefois, les p-values associées à ces mesures sont très faibles dans la plupart des cas. A titre d'exemple, on peut afficher la p-value et l'intervalle de confiance entre "pluie.demain.01" et "Med.cloud.mean", en utilisant la fonction "corr.test":
+
+```{r}
+cor.test(d$pluie.demain.01, d$Med.cloud.mean)
+```
+
+La p-value très faible, ainsi que les valeurs de l'intervalle de confiance, laissent à penser que ce coefficient de corrélation calculé donne une mesure assez fiable de la "direction" et de l'intensité du lien entre les deux variables  
+
+* Nous reviendrons à ces valeurs lorsqu'il s'agira de sélectionner, au sein de chaque famille de variable (nébulosité, vent, pression atmosphérique, etc) une variable unique "représentant" sa famille (cf. *infra*, section 4).   
+
+* Certains coefficients sont a priori délicats à interpréter: ceux concernant les variables "Year" et "Month", puisque ces variables sont ici traitées comme des variables numériques.   
+
+
+<br/>
+
+#### Matrice de corrélation
+  
+Calculons maintenant les coefficients de corrélation entre toutes les variables explicatives. 
+
+```{r}
+C = cor(d[,-44])
+library(corrplot)
+options(max.print=999999)
+cor_mat=matrix(round(C,digits=2),nrow=43, ncol=43)
+row.names(cor_mat) =c("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40","41","42","43")
+colnames(cor_mat) = row.names(cor_mat)
+symnum(cor_mat, abbr.colnames=FALSE)
+```
+
+
+Ce graphique représente par des symboles l'intensité des corrélations entre les variables. Selon la légende, les coefficients symbolisés par des "," sont supérieurs, en valeur absolue, à 0.6. Les coefficients symbolisés par des "+", des "*" et des "B" sont respectivement supérieurs à 0.8, O.9 et 0.95. 
+
+La première remarque est qu'on observe une forte corrélation entre une série de prédicteurs, en particulier entre ceux qui appartiennent à une même "famille". Il serait laborieux de les commenter de façon détaillée mais on peut faire quelques remarques générales. 
+
+<br/>
+
+**Vitesse du vent:**   
+
+On observe de fortes corrélations entre les valeurs max et min des vitesses de vents mesurées aux différentes altitudes et les valeurs moyennes de ces vitesses. Cela est vrai pour une altitude donnée, ce qui semble trivial, mais cela est vrai également si l'on croise les vitesses des différentes altitudes. 
+
+<br/>
+
+**Température:**  
+
+On observe de fortes corrélations entre les valeurs moyennes et les min/max des températures, ce qui est attendu. 
+
+<br/>
+
+**Pression atmosphérique:**  
+
+De même, on observe de fortes corrélations entre les valeurs moyennes et les min/max des niveaux de pression atmosphérique.
+
+Il ressort de cet examen qu'une partie des prédicteurs apparaissent comme très redondants (les valeurs moyennes, min et max de chaque variable). Au moment de sélectionner les variables de notre modèle, si l'on devait ne retenir qu'une seule des variables "mean", "min" ou "max" pour chaque grandeur, il semblerait pertinent de conserver celle qui a le coefficient de corrélation le plus élevé avec "pluie.demain". 
+
+En se basant sur le tableau précédent, nous pouvons donc distinguer au sein de chaque famille les variables suivantes:
+* "Temp.min" pour la température
+* "Hum.min" pour l'humidité
+* "Press.min" pour la pression atmosphérique
+* "Tot.cloud.mean", "High.cloud.max", "Med.cloud.max", "Low.cloud.max" pour les mesures de nébulosité
+* "Wspeed10max", "Wspeed80max", "Wspeed900max" et "Gust.max" pour les mesures de vitesse du vent
+
+Afin de se représenter les liens entre ces variables, on peut calculer une matrice de corrélation sur un jeu réduit de données, en retenant les variables que nous venons de lister (nous retenons également "Precip" et "Sunshine.daily.sum")
+  
+    
+<br/>
+
+#### Matrice des corrélations sur un jeu réduit
+
+On retient 13 variables. 
+
+```{r}
+d.reduced <- d[,c(6,8,11,12,22,24,26,29,31,35,37,39,41)]
+
+C.reduced = cor(d.reduced)
+
+cor_mat_reduced = matrix(round(C.reduced,digits=2),nrow=13)
+row.names(cor_mat_reduced) =c("Precip","Tot.cloud.mean","Low.cloud.mean","Sunshine.daily.sum","Temp.min","Hum.min","Press.min","High.cloud.max","Med.cloud.max","Wspeed10.max","Wspeed80.max","Wspeed900.max","Gust.max")
+colnames(cor_mat_reduced) =row.names(cor_mat_reduced)
+cor_mat_reduced
+
+```
+
+```{r}
+par(mfrow=c(1,1))
+corrplot(cor_mat_reduced, method="color",type="upper")
+```
+
+Cette dernière représentation nous donne une image synthétique, des liens entre les différentes familles de variables. 
+
+  
+  
+<br/>
+
+### 3. Quelques remarques sur le climat de la ville de Bâle
+
+Il peut être utile, pour compléter ce qui précède, de s'intéresser au climat de la ville de Bâle, en particulier à sa pluviométrie. L'objectif est de collecter des informations utiles pour la sélection des variables du modèle. 
+
+D'après la notice Wikipedia de la ville de Bâle [1], 
+
+"Le climat de Bâle est semi-continental : le contraste est important entre les hivers généralement froids et rigoureux, et les étés souvent chauds et ensoleillés (...) En été se produisent parfois des orages puissants, ce qui explique que la plus grande quantité des précipitations tombe durant cette période de l'année." 
+
+Cette notice présente également les moyennes mensuelles des précipitations.  
+
+```{r wiki, echo=FALSE, fig.cap="A caption", out.width = '100%'}
+knitr::include_graphics("/Users/dfessler1/Documents/EXEC MASTER/Module 2/Projet MLG/Capture d’écran Wiki 2021-12-31.png")
+```
+Source: https://fr.wikipedia.org/wiki/Bâle#Climat
+
+Notons que le cumul mensuel de pluviométrie indiqué dans la ligne "Précipitations" ne semble pas être une information pertinente pour notre étude, dans la mesure où notre problème n'est pas de savoir s'il a plus ou moins plu tel ou tel jour, mais plutôt de savoir *s'il a plu ou pas*. A cet égard, la dernière ligne, le nombre de jours avec précipitations, semble plus pertinent pour notre étude: il s'agit du nombre moyen de jours avec précipitations pour chaque mois de l'année, correspondant à la période 1981-2010 (les données sources sont celles de l'office fédéral de météorologie et de climatologie "MeteoSuisse" [2]). 
+
+Ce nombre moyen de jours de pluie est relativement stable sur l'année. 
+
+Toutefois les orages (et donc les pluies orageuses) se produisent principalement l'été, comme on peut le vérifier sur les graphiques qui suivent, issus du site infoclimat.fr [3]. 
+
+
+```{r meteo 2010, echo=FALSE, fig.cap="A caption", out.width = '100%'}
+knitr::include_graphics("/Users/dfessler1/Documents/EXEC MASTER/Module 2/Projet MLG/graphique_infoclimat.fr_bale-mulhouse-2010.png")
+```
+Source: https://www.infoclimat.fr/climatologie/annee/2010/bale-mulhouse/phenomenes/07299.html
+
+```{r meteo 2014, echo=FALSE, fig.cap="A caption", out.width = '100%'}
+knitr::include_graphics("/Users/dfessler1/Documents/EXEC MASTER/Module 2/Projet MLG/graphique_infoclimat.fr_bale-mulhouse-2014.png")
+```
+Source: https://www.infoclimat.fr/climatologie/annee/2014/bale-mulhouse/phenomenes/07299.html
+
+```{r meteo 2018, echo=FALSE, fig.cap="A caption", out.width = '100%'}
+knitr::include_graphics("/Users/dfessler1/Documents/EXEC MASTER/Module 2/Projet MLG/graphique_infoclimat.fr_bale-mulhouse-2018.png")
+```
+Source: https://www.infoclimat.fr/climatologie/annee/2014/bale-mulhouse/phenomenes/07299.html
+
+Cela signifie que, si le nombre de jours de pluie par mois est relativement stable tout au long de l'année, les causes des averses ne sont pas les mêmes 
+
+On peut penser que les pluies qui surviennent les mois d'été sont principalement des pluies orageuses et que les pluies des autres mois sont principalement des pluies non orageuses. 
+
+Ce qui signifieraient que les conditions climatiques qui permettraient de provoquer des averses le lendemain ne sont pas les mêmes selon la période de l'année qu'on considère. Cette remarque peut nous mettre sur la voie d'une stratégie pour sélectionner les variables du modèle, on pourrait choisir d'introduire une variable beoléenné supplémentaire "Mois d'été" pouvant prendre les valeurs TRUE ou FALSE. 
+
+Cela pose la question de ce qu'on désigne comme étant les "mois d'été", i.e. ceux pendant lesquels les averses seraient principalement des averses orageuses. Les graphiques ci-dessus donnent l'impression que ceux-ci sont les mois de mai à août. Nous le vérifierons dans la section suivante en réalisant des régressions sur des sous-ensemble du jeu de données, afin de voir si les variables pertinentes diffèrent selon la période de l'année. 
+
+
+<br/>
+
+### 4. Régressions logistiques
+
+<br/>
+
+#### 4.1. Première régression avec tous les prédicteurs
+
+On commence par prendre en compte toutes les prédicteurs disponibles. 
+
+```{r}
+d <- d[,-44] ### on supprime la colonne pluie.demain.01
+model0 = glm(pluie.demain ~ ., family=binomial,d)
+summary(model0)
+```
+
+5 prédicteurs apparaissent comme ayant un impact significatif sur la variable à expliquer: 
+Press.mean, Wdir900, Press.max, Press.min et Wspeed10.min
+
+Si l'on se rappelle que les variables Press.mean, Press.max et Press. min sont très corrélées entre elles, on peut juger qu'elles sont redondantes. Calculons les coefficients de corrélation:
+
+```{r}
+cor(d$Press.mean, d$Press.max)
+cor(d$Press.mean, d$Press.min)
+cor(d$Press.min, d$Press.max)
+```
+
+Une autre remarque, les variables liées à la couverture nuageuse ("Highcloud", "Medcloud", etc, ainsi que "Sunshine.daily.sun") n'apparaissent pas significatives, alors qu'elles étaient corrélées positivement (négativement pour "Sunshine.daily.sun") avec "pluie.demain". De même la variable mesurant l'intensité des rafales de vent "Gust.max" n'apparait pas significative alors qu'elle était corrélée positivement à "pluie.demain". 
+  
+<br/>
+
+#### 4.2. Séparer le jeu de données pour traiter à part les mois d'été
+
+Une manière de voir si les variables permettant d'expliquer la survenance de pluie à J+1 diffèrent entre les mois d'été et les autres mois de l'année est de réaliser des régressions sur les sous-périodes. 
+
+Une première question est de savoir comment découper ces "mois d'été". Ce choix est contraint par la quantité d'observations disponibles. En effet si l'on lance une régression sur seulement 3 mois d'observations, R nous indique que les données ne sont pas suffisantes pour fournir un ajustement fiable (Avis : glm.fit: fitted probabilities numerically 0 or 1 occurred"). On doit considérer une période de 4 mois au moins pour les mois d'été. Nous testons 3 découpages:   
+* Mai - Août  // Septembre - Avril  
+* Juin - Septembre // Octobre - Mai
+* Mai - Septembre  // Octobre - Avril
+
+ <br/> 
+  
+##### Séparer les mois d'été (Mai à Août)
+
+```{r}
+d.MayAugust <- subset(d, Month > 4 & Month < 9)
+d.JanvApr <- subset(d, Month < 5)
+d.SeptDec <- subset(d, Month > 8)
+d.SeptApr <- rbind (d.JanvApr, d.SeptDec)
+```
+
+<br/>
+  
+##### Régression sur les mois d'été (Mai à Août)
+
+```{r}
+modelMayAugust = glm(pluie.demain ~ ., family=binomial,d.MayAugust)
+summary(modelMayAugust)
+```
+  
+
+<br/>
+
+##### Régression sur les mois hors-été (Septembre à Avril)
+
+```{r}
+modelSeptApr = glm(pluie.demain ~ ., family=binomial,d.SeptApr)
+summary(modelSeptApr)
+```
+
+<br/>
+
+**Comparaison des résultats: ** 
+
+Les prédicteurs jugés significatifs diffèrent sensiblement entre les deux sous-périodes.  
+  
+Pour les mois d'été:  
+3 stars: Press.mean, Press.max, Press.min  
+1 star : Month  
+
+Pour les mois hors-été:  
+3 stars: Wdir900mean  
+2 stars: Year, Press.min
+1 star : Press.mean, Tot.cloud.mean, Temp.min, Press.max, Wspeed10min, Gust.max
+
+L'analyse est assez grossière à ce stade mais il semble, en première approximation, que les différences qui apparaissent entre les résumés des régressions sur les deux sous-périodes, que ces différences plaident en faveur de l'introduction d'une variable "Mois d'été" dans la régression. Tentons d'autres découpages des "mois d'été". 
+  
+<br/>
+  
+##### Séparer les mois d'été (Juin à Septembre)
+
+```{r}
+d.JuneSept <- subset(d, Month > 5 & Month < 10)
+d.JanvMay <- subset(d, Month < 6)
+d.OctDec <- subset(d, Month > 9)
+d.OctMay <- rbind (d.JanvMay, d.OctDec)
+```
+
+<br/>
+    
+##### Régression sur les mois d'été (Juin à Septembre)
+
+```{r}
+modelJuneSept = glm(pluie.demain ~ ., family=binomial,d.JuneSept)
+summary(modelJuneSept)
+```
+
+<br/> 
+    
+##### Régression sur les mois hors-été (Octobre à Mai)
+
+```{r}
+modelOctMay = glm(pluie.demain ~ ., family=binomial,d.OctMay)
+summary(modelOctMay)
+```
+
+<br/>
+  
+**Comparaison des résultats: **
+
+les prédicteurs significatifs sont:  
+
+Pour les mois d'été:  
+3 stars:  Month    
+2 stars:  Press.mean, Press.max, Press.min  
+1 star :  High.cloud.mean, Med.cloud.min, High.cloud.max, Wspeed80.min  
+
+Pour les mois hors-été:  
+3 stars: Wdir900.mean  
+2 stars: Year, Press.min  
+1 star : Press.mean, Press.max, Wspeed10min  
+
+Comme pour le découpage précédent, on voit apparaître des différences importantes dans la significativité des prédicteurs entre les deux sous-période. Tentons un troisième découpage. 
+
+<br/>
+    
+##### Séparer les mois d'été (mai à septembre)
+
+```{r}
+d.MaySept <- subset(d, Month > 4 & Month < 10)
+d.JanvApr <- subset(d, Month < 5)
+d.OctDec <- subset(d, Month > 9)
+d.OctApr <- rbind (d.JanvApr, d.OctDec)
+
+```
+  
+<br/>
+  
+##### Régression sur les mois d'été (mai à septembre)
+
+```{r}
+modelMaySept = glm(pluie.demain ~ ., family=binomial,d.MaySept)
+summary(modelMaySept)
+```
+    
+<br/>  
+
+##### Régression sur les mois hors-été (octobre à avril)
+
+```{r}
+modelOctApr = glm(pluie.demain ~ ., family=binomial,d.OctApr)
+summary(modelOctApr)
+```
+  
+  
+<br/>
+
+**Comparaison des résultats**
+
+Pour les mois d'été: 
+"***": Press.mean, Press.max, Press.min
+"**":  Month
+"*":   Med.cloud.mean, Med.cloud.max, Wspeed80.min
+
+Pour les mois hors-été: 
+"***": Wdir900.mean
+"**":  Tot.cloud.mean, Press.min
+"*":   Year, Press.mean, Sunshine.daily.sum, Wspeed10min
+
+  
+<br/>
+
+##### Bilan
+
+Dans les trois découpages, on voit apparaître des différences notables entre les résultats correspondant aux deux sous-périodes. 
+
+Quelques remarques:
+
+* Pour les mois d'été les prédicteurs les plus significatifs sont ceux relatifs à la pression atmosphérique, et dans une moindre mesure à la couverture nuageuse
+* Pour les mois hors-été :
++ la variable Wdir900min semble jouer un rôle important 
++ la variable Press.min semble également importante
+
+Le dernier découpage nous semble être celui qui fait apparaître les différences les plus marquées entre les deux périodes de l'année: nous retenons donc ce découpage et nous allons introduire dans la régression une variable booléenne marquant les mois allant de mai à septembre. On prendra en compte l'interaction de cette nouvelle variable avec le vent, la pression atmosphérique et la nébulosité. 
+
+
+<br/>
+
+##### Sélection des variables
+
+Compte tenu des remarques faites précédemment, nous allons chercher, dans un premier temps, à réduire le nombre de variables et, dans un second temps, à introduire la composante saisonnière dans le modèle. 
+
+Considérons d'abord les différentes familles de variables, au sein desquelles nous avons dit qu'elles étaient fortement corrélées entre elles, et chercher à retenir à chaque fois les plus pertinentes. 
+
+Pour la température: 
++ "Temp.min" est le prédicteur le plus corrélé avec "pluie.demain" et le seul qui apparait  significatif dans les régressions ci-dessus. 
+
+Pour l'humidité: 
++ on retient "Hum.min" prédicteur le plus corrélé avec "pluie.demain"
+
+Pour la pression atmosphérique: 
++ on retient "Press.min", qui par comparaison, joue un rôle plus important dans la survenance des averses dans les mois hors-été. 
+
+Pour la couverure nuageuse et l'ensoleillement:
++ "Tot.cloud.mean" semble jouer un rôle plus important dans les périodes hors-été. "Med.cloud.mean" dans les mois d'été. On peut retenir également High.cloud.max. 
+
+Pour la vitesse et la direction du vent:
++ "Wspeed80.min" semble jouer un rôle important les mois d'été;
++ "Wspeed10.min", "Gust.max" et surtout "Wdir900.mean" un rôle important les mois hors été. 
+
+<br/>
+
+#### 4.3. Pour affiner le modèle
+
+On réalise tout d'abord une nouvelle régression avec ces prédicteurs. 
+
+```{r}
+model1 = glm(formula = pluie.demain ~ Temp.min + Hum.min + Press.min + Tot.cloud.mean + Med.cloud.mean + High.cloud.max + Wspeed80.min + Wspeed10.min + Gust.max + Wdir900.mean, family = binomial, data = d)
+summary(model1)
+```
+
+On peut noter que l'AIC est légèrement plus faible dans le petit modèle.
+  
+<br/>
+
+#### Régression avec une variable supplémentaire distinguant les mois d'été et les autres mois
+
+```{r}
+model2 = glm(formula = pluie.demain ~ Temp.min + Hum.min + Press.min + Tot.cloud.mean + Med.cloud.mean + High.cloud.max + Wspeed80.min + Wspeed10.min + Gust.max + Wdir900.mean + I(Month>4 & Month<10), family = binomial, data = d)
+summary(model2)
+```
+
+On observe un très gain léger d'ajustement par rapport au modèle sans la variable additionnelle, mais c'est surtout l'interaction entre cette variable "Mois d'été" et les autres variables qui nous intéresse. Ajoutons ces interactions entre la variable booléenne et les prédicteurs qui semblaient spécifiques à l'une ou l'autre des sous-périodes 
+
+```{r}
+model3 = glm(formula = pluie.demain ~ Temp.min + Hum.min + Press.min + Tot.cloud.mean + Med.cloud.mean + High.cloud.max + Wspeed80.min + Wspeed10.min + Gust.max + Wdir900.mean + I(Month>4 & Month<10)*Temp.min + I(Month>4 & Month<10)*Wspeed10.min+ I(Month>4 & Month<10)*Wdir900.mean + I(Month>4 & Month<10)*Wspeed80.min, family = binomial, data = d)
+summary(model3)
+```
+
+Le gain d'ajustement semble plus net dans ce cas, on oberve notamment que l'interaction entre Wdir900 et la variable "mois d'été" est significative à un seuil de confiance de 1%. On peut faire une dernière tentative en supprimant "Med.cloud.mean", Wspeed10 et Wspeed80. On conserve "Temp.min", via l'interaction avec la variable booléenne "Mois d'été". 
+
+```{r}
+model4 = glm(formula = pluie.demain ~  Temp.min + Hum.min + Press.min + Tot.cloud.mean + High.cloud.max + Gust.max + Wdir900.mean + I(Month>4 & Month<10)*Temp.min + I(Month>4 & Month<10)*Wspeed10.min+ I(Month>4 & Month<10)*Wdir900.mean, family = binomial, data = d)
+summary(model4)
+```
+
+On a encore gagné légèrement en qualité de l'ajustement, l'AIC étant légèrement plus faible. On retient ce dernier modèle pour effectuer nos prédictions. 
+
+Jusqu'à présent nous avons sélectionné les variables du modèle en se basant sur trois types d'éléments:
+* une analyse (très succincte) des phénomènes physiques que l'on cherche à prédire; 
+* des indicateurs (représentations graphiques, coefficients de corrélation) permettant de faire apparaître les  prédicteurs les plus importants;
+* l'utilisation d'une critère d'ajustement, l'AIC, lorsque nous avons testé différents modèles de régressions, 
+
+Une autre manière de procéder est de recourir à une méthode de sélection plus automatique, en utilisant la fonction *regsubsets* de la librairie *leaps.* 
+
+<br/>
+   
+#### 5. Sélection de variable avec une méthode automatique
+
+Nous allos désormais utiliser une méthode qui combine 4 critère d'ajustement du modèle (le R^2^, le R^2^ ajusté, le Cp de Mallows et le BIC). On doit définir un nombre de variable maximum du modèle. Dans notre cas, on choisit nvmax = 12, i.e. le nombre de variable du modèle (en plus de l'intercept) que nous avons défini "avec les mains", afin de pouvoir comparer les résultats en terme d'ajustement des deux approches. La fonction *regsubsets* de la librairie *leaps* nous permet de calculer les meilleures séries de prédicteurs en fonction de ces différents critères.  
+
+```{r}
+library(leaps)
+choix_modele = regsubsets(pluie.demain ~ ., int=T, nbest=1, nvmax=12, method="exhaustive", data=d)
+resume = summary(choix_modele)
+print(resume)
+```
+Il faut lire la dernière ligne du tableau pour voir quelles sont les 12+1 prédicteurs retenus avec cette méthode. On peut relancer une régression logistique avec ces variables. 
+
+```{r}
+model5 = glm(pluie.demain ~ Year + Press.mean + Med.cloud.mean + Wspeed80.mean + Wdir900.mean + Temp.max + Press.max + Press.min + Med.cloud.max + Wspeed10.max + Wspeed10.min + Gust.max, family=binomial,d)
+summary(model5)
+```
+
+Ce dernier modèle semble un peu mieux ajusté que le modèle retenu à la section précédente. Nous allons comparer les deux séries de prévisions. 
+
+<br/>
+
+#### 6. Prédiction
+
+On peut enfin générer des prédictions, tout d'abord à partir du modèle 4 construit "avec les mains":
+
+```{r}
+prediction.pluie.demain <- predict(model4, new=dtest, type="response")
+prediction.pluie.demain.01 <- round (prediction.pluie.demain)
+dtest_pred <- cbind(dtest,prediction.pluie.demain,as.logical(prediction.pluie.demain.01)) ### en reconvertissant la variable pluie.demain en variable logique
+```
+
+Puis avec le modèle calculé grâce à la fonction *regsubset*
+
+```{r}
+prediction.pluie.demain.2 <- predict(model5, new=dtest, type="response")
+prediction.pluie.demain.2.01 <- round (prediction.pluie.demain.2)
+dtest_pred.2 <- cbind(dtest,prediction.pluie.demain.2.01,as.logical(prediction.pluie.demain.2.01)) ### en reconvertissant la variable pluie.demain en variable logique
+```
+
+Comparons les résultats des deux approches
+
+```{r}
+compdiff01 <- prediction.pluie.demain.01 - prediction.pluie.demain.2.01
+compdiff <- prediction.pluie.demain - prediction.pluie.demain.2
+comp_pred = cbind(prediction.pluie.demain, prediction.pluie.demain.2, prediction.pluie.demain.01, prediction.pluie.demain.2.01, compdiff01, compdiff)
+table_compdiff<-table(compdiff01)
+table_compdiff
+```
+
+Il apparaît que sur 290 prévisions:  
+* 25 fois le modèle 5 prédit de la pluie alors que le modèle 4 n'en prédit pas  
+* 16 fois le modèle 4 prédit de la pluie alors que le modèle 5 n'en prédit pas  
+* 249 fois les prévisions concordent   
+
+Ces deux prévisions apparaissent très proches. C'est d'autant plus vrai que dans les cas où les prédictions diffèrent, les écarts entre les probabilités de survenance de la pluie sont souvent très faibles. La moyenne des valeurs absolues des écarts de prévision étant inférieure à 0.1:
+
+```{r}
+comppred.mod <- subset(comp_pred, compdiff01 != 0)
+vacompdif = abs (compdiff)
+mean(vacompdif)
+```
+
+<br/>
+
+
+### Conclusion
+
+Parce que la méthode nous semble plus intuitive, nous choisissons finalement de retenir les prévisions issues du modèle construit "avec les mains" (model4).
+
+```{r}
+write.csv(dtest_pred,"~/Documents/EXEC MASTER/Module 2/Projet MLG/dtest_pred.csv", row.names = FALSE)
+```
+
+<br/>
+
+### Références
+
+[1] https://fr.wikipedia.org/wiki/Bâle#Climat 
+(page consultée le 30-12-2021)
+
+[2] https://www.meteosuisse.admin.ch/product/output/climate-data/climate-diagrams-normal-values-station-processing/BAS/climsheet_BAS_np8110_f.pdf
+(page consultée le 30-12-2021)
+
+[3] https://www.infoclimat.fr/
+(page consultée le 06-01-2022)
+
+
+<br/>
+
